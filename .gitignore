@@ -9,4 +9,4 @@ venv/
 models/
 *.onnx
 .DS_Store
-desktop.ini
+/desktop.ini
