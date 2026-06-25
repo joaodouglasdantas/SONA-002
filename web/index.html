@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SONA — Foto → The Sims 3</title>
+<style>
+  :root { --bg:#0e1320; --card:#19203200; --accent:#39d98a; --muted:#8a93a6; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,Segoe UI,Roboto,sans-serif;
+         background:#0e1320; color:#eef2f8; }
+  .wrap { max-width:880px; margin:0 auto; padding:24px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.sub { color:#8a93a6; margin:0 0 24px; }
+  .drop { border:2px dashed #2c3650; border-radius:16px; padding:32px;
+          text-align:center; cursor:pointer; transition:.15s; }
+  .drop:hover { border-color:#39d98a; background:#141b2e; }
+  .drop input { display:none; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:24px; }
+  .panel { background:#141b2e; border:1px solid #232c45; border-radius:14px;
+           padding:14px; min-height:240px; display:flex; flex-direction:column; }
+  .panel h3 { margin:0 0 10px; font-size:13px; color:#8a93a6; font-weight:600;
+              text-transform:uppercase; letter-spacing:.04em; }
+  .panel img { width:100%; border-radius:10px; object-fit:contain; }
+  button { background:#39d98a; color:#06281a; border:0; border-radius:10px;
+           padding:12px 18px; font-weight:700; cursor:pointer; font-size:15px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .bar { display:flex; gap:12px; align-items:center; margin-top:18px; }
+  .status { font-size:14px; color:#8a93a6; }
+  .err { color:#ff6b6b; }
+  .ok { color:#39d98a; }
+  .meta { font-size:12px; color:#8a93a6; margin-top:8px; line-height:1.5; }
+  .ph { color:#56607a; margin:auto; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SONA · Foto → The Sims 3</h1>
+  <p class="sub">Envie a foto de um rosto humano real. A IA recria a pessoa no estilo The Sims 3.</p>
+
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept="image/jpeg,image/png,image/webp">
+    <div id="dropText">Clique ou arraste uma foto aqui</div>
+  </label>
+
+  <div class="bar">
+    <button id="go" disabled>Gerar versão Sims 3</button>
+    <span class="status" id="status">Aguardando imagem…</span>
+  </div>
+
+  <div class="row">
+    <div class="panel">
+      <h3>Original</h3>
+      <div id="origBox" class="ph">— sem imagem —</div>
+    </div>
+    <div class="panel">
+      <h3>The Sims 3</h3>
+      <div id="outBox" class="ph">— resultado —</div>
+      <div class="meta" id="meta"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const fileInput = document.getElementById('file');
+const drop = document.getElementById('drop');
+const go = document.getElementById('go');
+const statusEl = document.getElementById('status');
+const origBox = document.getElementById('origBox');
+const outBox = document.getElementById('outBox');
+const meta = document.getElementById('meta');
+let current = null;
+
+function setStatus(t, cls){ statusEl.textContent = t; statusEl.className = 'status ' + (cls||''); }
+
+function showOriginal(file){
+  const url = URL.createObjectURL(file);
+  origBox.outerHTML = '<img id="origBox" src="'+url+'">';
+}
+
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  current = f; go.disabled = false;
+  document.getElementById('dropText').textContent = f.name;
+  showOriginal(f);
+  setStatus('Pronto para gerar.');
+});
+
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.style.borderColor = '#39d98a';
+}));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.style.borderColor = '#2c3650';
+}));
+drop.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if(f){ fileInput.files = e.dataTransfer.files; fileInput.dispatchEvent(new Event('change')); }
+});
+
+go.addEventListener('click', async () => {
+  if(!current) return;
+  go.disabled = true; meta.textContent = '';
+  outBox.outerHTML = '<div id="outBox" class="ph">Gerando… isso pode levar alguns segundos</div>';
+  setStatus('Validando rosto e gerando…');
+
+  const fd = new FormData();
+  fd.append('file', current);
+  try {
+    const r = await fetch('/transform', { method:'POST', body: fd });
+    const data = await r.json();
+    if(r.status === 422){
+      setStatus('Imagem rejeitada: ' + data.message, 'err');
+      outBox.outerHTML = '<div id="outBox" class="ph err">'+data.message+'</div>';
+    } else if(!r.ok){
+      setStatus('Erro: ' + (data.detail || r.status), 'err');
+    } else {
+      outBox.outerHTML = '<img id="outBox" src="data:image/png;base64,'+data.image_base64+'">';
+      const fid = data.fidelity_ok ? 'alta' : 'baixa';
+      setStatus('Pronto!', 'ok');
+      meta.innerHTML = 'Similaridade de identidade: <b>'+(data.similarity*100).toFixed(1)+
+        '%</b> (fidelidade '+fid+')<br>Tentativas: '+data.attempts+
+        ' · Rostos detectados: '+data.num_faces+' · Provider: '+data.provider;
+    }
+  } catch(err){
+    setStatus('Falha de rede: ' + err, 'err');
+  } finally {
+    go.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
