@@ -1,0 +1,103 @@
+{
+  "_README": "Template ComfyUI (API format) para Flux + PuLID + LoRA Sims. PONTO DE PARTIDA: valide no seu ComfyUI (Save -> API Format). Os nomes dos nos PuLID (PulidFlux*) dependem do pack instalado (ex.: balazik/ComfyUI-PuLID-Flux). Placeholders injetados pelo provider: {{PROMPT}}, {{NEGATIVE}}, {{IMAGE}}, {{LORA}}, {{SEED}}.",
+  "10": {
+    "class_type": "UNETLoader",
+    "inputs": {"unet_name": "flux1-dev.safetensors", "weight_dtype": "fp8_e4m3fn"},
+    "_meta": {"title": "Load Flux UNET"}
+  },
+  "11": {
+    "class_type": "DualCLIPLoader",
+    "inputs": {"clip_name1": "t5xxl_fp16.safetensors", "clip_name2": "clip_l.safetensors", "type": "flux"},
+    "_meta": {"title": "DualCLIP (Flux)"}
+  },
+  "12": {
+    "class_type": "VAELoader",
+    "inputs": {"vae_name": "ae.safetensors"},
+    "_meta": {"title": "Load VAE"}
+  },
+  "20": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {"model": ["10", 0], "lora_name": "{{LORA}}", "strength_model": 0.9},
+    "_meta": {"title": "LoRA Sims"}
+  },
+  "30": {
+    "class_type": "PulidFluxModelLoader",
+    "inputs": {"pulid_file": "pulid_flux_v0.9.1.safetensors"},
+    "_meta": {"title": "PuLID-Flux Model"}
+  },
+  "31": {
+    "class_type": "PulidFluxEvaClipLoader",
+    "inputs": {},
+    "_meta": {"title": "EVA-CLIP"}
+  },
+  "32": {
+    "class_type": "PulidFluxInsightFaceLoader",
+    "inputs": {"provider": "CUDA"},
+    "_meta": {"title": "InsightFace"}
+  },
+  "33": {
+    "class_type": "LoadImage",
+    "inputs": {"image": "{{IMAGE}}"},
+    "_meta": {"title": "Foto de entrada"}
+  },
+  "34": {
+    "class_type": "ApplyPulidFlux",
+    "inputs": {
+      "model": ["20", 0],
+      "pulid_flux": ["30", 0],
+      "eva_clip": ["31", 0],
+      "face_analysis": ["32", 0],
+      "image": ["33", 0],
+      "weight": 0.9,
+      "start_at": 0.0,
+      "end_at": 1.0
+    },
+    "_meta": {"title": "Apply PuLID (identidade)"}
+  },
+  "40": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {"text": "{{PROMPT}}", "clip": ["11", 0]},
+    "_meta": {"title": "Prompt"}
+  },
+  "41": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {"text": "{{NEGATIVE}}", "clip": ["11", 0]},
+    "_meta": {"title": "Negative"}
+  },
+  "42": {
+    "class_type": "FluxGuidance",
+    "inputs": {"conditioning": ["40", 0], "guidance": 3.5},
+    "_meta": {"title": "Flux Guidance"}
+  },
+  "50": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {"width": 1024, "height": 1024, "batch_size": 1},
+    "_meta": {"title": "Latent"}
+  },
+  "60": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["34", 0],
+      "positive": ["42", 0],
+      "negative": ["41", 0],
+      "latent_image": ["50", 0],
+      "seed": "{{SEED}}",
+      "steps": 25,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    },
+    "_meta": {"title": "KSampler"}
+  },
+  "70": {
+    "class_type": "VAEDecode",
+    "inputs": {"samples": ["60", 0], "vae": ["12", 0]},
+    "_meta": {"title": "VAE Decode"}
+  },
+  "80": {
+    "class_type": "SaveImage",
+    "inputs": {"images": ["70", 0], "filename_prefix": "sona_sims"},
+    "_meta": {"title": "Save"}
+  }
+}

@@ -1,9 +1,9 @@
-"""Orquestrador do fluxo A → B → C → D.
+"""Orquestrador do fluxo A -> B -> C -> D.
 
-A: pré-processamento   B: validação de rosto (porteiro)
-C: geração (InstantID) D: verificação de fidelidade + re-tentativa
+A: pre-processamento   B: validacao de rosto (porteiro)
+C: geracao             D: verificacao de fidelidade + re-tentativa
 
-Dependências (validator, provider, detector) são injetáveis para teste.
+Dependencias (validator, provider, detector) sao injetaveis para teste.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .face.detector import FaceDetector
 from .face.validator import FaceValidator, RejectReason, ValidationResult
 from .generation.base import (GenerationProvider, GenerationRequest,
                               get_provider)
-from .generation.prompts import build_negative, build_prompt
+from .generation.prompts import build_flux_prompt, build_negative, build_prompt
 from .utils.image_io import load_image
 from .verify.similarity import cosine_similarity
 
@@ -24,12 +24,10 @@ from .verify.similarity import cosine_similarity
 @dataclass
 class PipelineResult:
     accepted: bool
-    # caminho de rejeição
     reason: Optional[RejectReason] = None
     message: str = ""
     num_faces: int = 0
     realness_score: Optional[float] = None
-    # caminho de sucesso
     image_png: Optional[bytes] = None
     similarity: float = 0.0
     fidelity_ok: bool = False
@@ -49,10 +47,9 @@ class Pipeline:
                  provider: Optional[GenerationProvider] = None,
                  detector: Optional[FaceDetector] = None):
         self.s = settings or get_settings()
-        # reusa um único detector para validação e verificação pós-geração
         self.detector = detector or FaceDetector(device=self.s.device)
         self.validator = validator or FaceValidator(self.s, detector=self.detector)
-        self._provider = provider  # carregado preguiçosamente se None
+        self._provider = provider
 
     @property
     def provider(self) -> GenerationProvider:
@@ -62,26 +59,31 @@ class Pipeline:
 
     def run(self, data: bytes, extra_style: str = "",
             seed: Optional[int] = None) -> PipelineResult:
-        # A — pré-processamento
+        # A - pre-processamento
         image = load_image(data, max_side=self.s.max_side_px)
 
-        # B — validação (porteiro)
+        # B - validacao (porteiro)
         v = self.validator.validate(image)
         if not v.accepted:
             return PipelineResult.from_rejection(v)
 
         original_emb = v.primary_face.embedding
         image_png = image.to_png_bytes()
-        prompt = build_prompt(extra_style)
+
+        # prompt depende do caminho de geracao
+        if self.s.provider in ("flux_pulid", "comfyui_replicate"):
+            use_lora_trigger = self.s.provider == "comfyui_replicate"
+            prompt = build_flux_prompt(extra_style, use_lora_trigger=use_lora_trigger)
+        else:
+            prompt = build_prompt(extra_style)
         negative = build_negative()
 
-        # C + D — gerar e verificar fidelidade, re-tentando se preciso
+        # C + D - gerar e verificar fidelidade, re-tentando se preciso
         best = None
         attempts = 0
         for attempt in range(self.s.max_retries + 1):
             attempts = attempt + 1
             use_seed = seed if seed is not None else random.randint(0, 2**31 - 1)
-            # a cada re-tentativa, reforça o condicionamento de identidade
             id_strength = min(0.95, 0.85 + 0.05 * attempt)
             req = GenerationRequest(
                 image_png=image_png, prompt=prompt, negative_prompt=negative,
@@ -107,10 +109,10 @@ class Pipeline:
             meta=result.meta)
 
     def _measure_similarity(self, original_emb, generated_png: bytes) -> float:
-        """Detecta rosto na saída e compara identidade com a entrada."""
+        """Detecta rosto na saida e compara identidade com a entrada."""
         gen_img = load_image(generated_png, max_side=self.s.max_side_px)
         faces = self.detector.detect(gen_img.to_numpy_bgr())
         if not faces:
-            return 0.0  # saída sem rosto reconhecível = fidelidade nula
+            return 0.0
         gen_face = max(faces, key=lambda f: f.area)
         return cosine_similarity(original_emb, gen_face.embedding)

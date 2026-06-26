@@ -70,3 +70,24 @@ Trocar `SONA_PROVIDER=replicate` por `comfyui` permite self-host numa GPU própr
 O app chama `POST /transform` (multipart `file`). Recomendado adicionar atrás de um
 gateway com autenticação e fila de jobs para escala. Para LoRA própria de estilo
 The Sims 3, defina `SONA_STYLE_LORA`.
+
+## Estilo The Sims: providers e LoRA
+
+A geracao usa um `provider` selecionavel em `SONA_PROVIDER`:
+
+- `flux_pulid` (padrao) - Flux + PuLID via `bytedance/flux-pulid`. Preserva
+  identidade a partir de uma foto e aplica o estilo The Sims pelo prompt
+  (gatilho `THSMS`). Funciona imediatamente com o token do Replicate, sem GPU.
+- `comfyui_replicate` - Flux + PuLID + a LoRA Sims (`dvyio/flux-lora-the-sims`)
+  num workflow ComfyUI rodando via `fofr/any-comfyui-workflow`. Maxima fidelidade
+  de estilo. Requer validar o workflow `workflows/flux_pulid_lora.json` no seu
+  ComfyUI (Save -> API Format), pois os nos PuLID-Flux dependem do pack instalado.
+- `replicate` - SDXL InstantID (fallback).
+- `comfyui` - ComfyUI self-hosted (GPU propria).
+
+LoRA usada: `dvyio/flux-lora-the-sims` (base Flux.1-dev, gatilho
+`video game screenshot in the style of THSMS`).
+
+Licenca: FLUX.1-dev e essa LoRA sao de uso nao-comercial. Para um produto
+comercial, migre para FLUX.1-schnell (Apache), volte ao SDXL/InstantID, ou treine
+uma LoRA propria.

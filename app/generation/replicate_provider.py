@@ -1,10 +1,9 @@
-"""Provider de geração usando Replicate (InstantID sobre SDXL).
+"""Provider de geracao usando Replicate (InstantID sobre SDXL).
 
-InstantID preserva identidade a partir de UMA foto (sem treino) e mantém
-pose/enquadramento pelos keypoints faciais. Aqui só passamos a imagem + prompts;
-o modelo extrai o embedding e os keypoints internamente.
+InstantID preserva identidade a partir de UMA foto (sem treino) e mantem
+pose/enquadramento pelos keypoints faciais.
 
-Import preguiçoso de `replicate`. Requer REPLICATE_API_TOKEN no ambiente.
+Import preguicoso de `replicate`. Requer REPLICATE_API_TOKEN no ambiente.
 """
 from __future__ import annotations
 
@@ -16,6 +15,23 @@ from .base import (GenerationError, GenerationProvider, GenerationRequest,
                    GenerationResult)
 
 
+def resolve_ref(client, ref: str) -> str:
+    """Garante owner/model:versao.
+
+    Modelos NAO-oficiais no Replicate exigem a versao fixada para rodar via API
+    (sem ela, a chamada retorna 404). Se `ref` ja tem ':', usa como esta; senao,
+    busca a versao mais recente do modelo automaticamente.
+    """
+    if ":" in ref:
+        return ref
+    model = client.models.get(ref)
+    ver = getattr(model, "latest_version", None)
+    if ver is None:
+        ver = next(iter(model.versions.list()))
+    vid = getattr(ver, "id", None) or ver["id"]
+    return f"{ref}:{vid}"
+
+
 class ReplicateProvider(GenerationProvider):
     name = "replicate"
 
@@ -23,13 +39,12 @@ class ReplicateProvider(GenerationProvider):
         self.s = settings
         if not settings.replicate_api_token:
             raise GenerationError(
-                "REPLICATE_API_TOKEN não configurado (.env). Necessário para gerar.")
+                "REPLICATE_API_TOKEN nao configurado (.env). Necessario para gerar.")
 
     def generate(self, req: GenerationRequest) -> GenerationResult:
-        import replicate  # adiado
+        import replicate
 
         client = replicate.Client(api_token=self.s.replicate_api_token)
-
         data_uri = "data:image/png;base64," + base64.b64encode(req.image_png).decode()
         model_input = {
             "image": data_uri,
@@ -46,27 +61,26 @@ class ReplicateProvider(GenerationProvider):
             model_input["lora"] = req.style_lora
 
         try:
-            output = client.run(self.s.replicate_model, input=model_input)
+            ref = resolve_ref(client, self.s.replicate_model)
+            output = client.run(ref, input=model_input)
         except Exception as exc:  # noqa: BLE001
             raise GenerationError(f"falha na chamada ao Replicate: {exc}") from exc
 
         png = _read_output_png(output)
         if png is None:
-            raise GenerationError("Replicate não retornou imagem utilizável.")
+            raise GenerationError("Replicate nao retornou imagem utilizavel.")
 
         return GenerationResult(image_png=png, provider=self.name, seed=req.seed,
                                 meta={"model": self.s.replicate_model})
 
 
 def _read_output_png(output) -> bytes | None:
-    """Normaliza as várias formas de saída do Replicate (lista, url, file-like)."""
+    """Normaliza as varias formas de saida do Replicate (lista, url, file-like)."""
     item = output[0] if isinstance(output, (list, tuple)) and output else output
     if item is None:
         return None
-    # objeto file-like (replicate>=0.25 retorna FileOutput com .read())
     if hasattr(item, "read"):
         return item.read()
-    # URL (str)
     if isinstance(item, str) and item.startswith("http"):
         import urllib.request
         with urllib.request.urlopen(item) as resp:  # noqa: S310

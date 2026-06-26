@@ -84,3 +84,10 @@ def index():
     if html.exists():
         return FileResponse(str(html))
     return JSONResponse({"message": "SONA API", "docs": "/docs"})
+
+
+@app.get("/favicon.ico")
+def favicon():
+    # evita 404 ruidoso no log: o navegador pede o icone automaticamente
+    from fastapi import Response
+    return Response(status_code=204)
